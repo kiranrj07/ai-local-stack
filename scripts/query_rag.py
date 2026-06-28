@@ -6,6 +6,11 @@ Usage:
 """
 from __future__ import annotations
 
+import os
+# Workaround for macOS OpenMP runtime conflict between faiss-cpu and pytorch.
+# Both link libomp; this allows the second runtime to load without aborting.
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 import argparse
 import sys
 from pathlib import Path
@@ -18,6 +23,7 @@ sys.path.insert(0, str(ROOT))
 from core.ollama_client import OllamaClient  # noqa: E402
 from core.retriever import hybrid_retrieve  # noqa: E402
 from core.router import load_system_config, resolve_endpoint  # noqa: E402
+from core.tracing import setup_tracing, trace_span  # noqa: E402
 
 
 SYSTEM_PROMPT = """You are a careful code/doc assistant. Answer only from the provided context.
@@ -61,6 +67,10 @@ def main() -> int:
     if ep.fell_back:
         print(f"[query_rag] FALLBACK: {ep.reason}", file=sys.stderr)
 
+    tracing_on = setup_tracing()
+    if tracing_on:
+        print("[query_rag] Phoenix tracing ON (http://localhost:6006)", file=sys.stderr)
+
     client = OllamaClient(ep.ollama_url)
 
     faiss_dir = ROOT / rag_cfg["storage"]["faiss_dir"]
@@ -71,17 +81,20 @@ def main() -> int:
         print("FAISS index not found. Run: python scripts/build_index.py", file=sys.stderr)
         return 2
 
-    hits = hybrid_retrieve(
-        question,
-        faiss_dir=faiss_dir,
-        bm25_dir=bm25_dir,
-        meta_db=meta_db,
-        embedder=client,
-        embedding_model=ep.embedding_model,
-        vector_top_k=rag_cfg["retrieval"]["vector_top_k"],
-        bm25_top_k=rag_cfg["retrieval"]["bm25_top_k"],
-        final_top_k=rag_cfg["retrieval"]["final_top_k"],
-    )
+    with trace_span("retrieve", query=question, mode=ep.mode):
+        hits = hybrid_retrieve(
+            question,
+            faiss_dir=faiss_dir,
+            bm25_dir=bm25_dir,
+            meta_db=meta_db,
+            embedder=client,
+            embedding_model=ep.embedding_model,
+            vector_top_k=rag_cfg["retrieval"]["vector_top_k"],
+            bm25_top_k=rag_cfg["retrieval"]["bm25_top_k"],
+            final_top_k=rag_cfg["retrieval"]["final_top_k"],
+            rerank=rag_cfg["retrieval"].get("rerank", False),
+            reranker_model=ep.reranker_model or "BAAI/bge-reranker-base",
+        )
 
     print("\n=== Retrieved context ===", file=sys.stderr)
     for h in hits:
@@ -93,13 +106,15 @@ def main() -> int:
 
     prompt = build_prompt(question, hits)
     llm_model = rag_cfg["generation"].get("override_llm_model") or ep.llm_model
-    answer = client.generate(
-        llm_model,
-        prompt,
-        system=SYSTEM_PROMPT,
-        temperature=rag_cfg["generation"]["temperature"],
-        num_predict=rag_cfg["generation"]["max_output_tokens"],
-    )
+
+    with trace_span("generate", model=llm_model, mode=ep.mode):
+        answer = client.generate(
+            llm_model,
+            prompt,
+            system=SYSTEM_PROMPT,
+            temperature=rag_cfg["generation"]["temperature"],
+            num_predict=rag_cfg["generation"]["max_output_tokens"],
+        )
 
     print("\n=== Answer ===")
     print(answer.strip())

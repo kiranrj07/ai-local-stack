@@ -1,4 +1,4 @@
-"""Hybrid retrieval: FAISS (vectors) + BM25 (keywords), merged + deduplicated."""
+"""Hybrid retrieval: FAISS (vectors) + BM25 (keywords), merged, optionally reranked."""
 from __future__ import annotations
 
 import json
@@ -20,7 +20,7 @@ class Hit:
     end_line: int
     text: str
     score: float
-    source: str  # 'vector' | 'bm25' | 'hybrid'
+    source: str  # 'vector' | 'bm25' | 'hybrid' | 'reranked'
 
 
 def _load_metadata(db_path: Path) -> Dict[str, Dict]:
@@ -62,13 +62,33 @@ def bm25_search(query: str, bm25_dir: Path, top_k: int) -> List[Tuple[str, float
     return [(c, float(s)) for c, s in ranked]
 
 
+# Module-level reranker cache so we don't reload the model per query.
+_RERANKER = None
+
+
+def _get_reranker(model_name: str):
+    global _RERANKER
+    if _RERANKER is None:
+        from sentence_transformers import CrossEncoder
+        _RERANKER = (model_name, CrossEncoder(model_name))
+    elif _RERANKER[0] != model_name:
+        from sentence_transformers import CrossEncoder
+        _RERANKER = (model_name, CrossEncoder(model_name))
+    return _RERANKER[1]
+
+
 def hybrid_retrieve(query: str, *, faiss_dir: Path, bm25_dir: Path, meta_db: Path,
                     embedder: OllamaClient, embedding_model: str,
-                    vector_top_k: int, bm25_top_k: int, final_top_k: int) -> List[Hit]:
-    v = vector_search(query, faiss_dir, embedder, embedding_model, vector_top_k)
-    b = bm25_search(query, bm25_dir, bm25_top_k)
+                    vector_top_k: int, bm25_top_k: int, final_top_k: int,
+                    rerank: bool = False,
+                    reranker_model: str = "BAAI/bge-reranker-base") -> List[Hit]:
+    """Hybrid retrieve. When rerank=True, pulls a wider candidate set then
+    re-scores using the cross-encoder and returns top `final_top_k`."""
+    # Pull wider pools when reranking so the reranker has more candidates.
+    pool_factor = 3 if rerank else 1
+    v = vector_search(query, faiss_dir, embedder, embedding_model, vector_top_k * pool_factor)
+    b = bm25_search(query, bm25_dir, bm25_top_k * pool_factor)
 
-    # Normalize scores to [0,1] before merging
     def _norm(pairs: List[Tuple[str, float]]) -> Dict[str, float]:
         if not pairs:
             return {}
@@ -84,15 +104,44 @@ def hybrid_retrieve(query: str, *, faiss_dir: Path, bm25_dir: Path, meta_db: Pat
         merged[c] = merged.get(c, 0.0) + 0.6 * s
     for c, s in bn.items():
         merged[c] = merged.get(c, 0.0) + 0.4 * s
-    ranked = sorted(merged.items(), key=lambda x: x[1], reverse=True)[:final_top_k]
+
+    # Candidate set: more candidates when reranking, just final_top_k otherwise
+    candidate_k = final_top_k * pool_factor if rerank else final_top_k
+    candidates = sorted(merged.items(), key=lambda x: x[1], reverse=True)[:candidate_k]
 
     metadata = _load_metadata(meta_db)
+
+    if rerank and candidates:
+        # Cross-encoder rerank
+        pairs = []
+        cand_ids = []
+        for cid, _ in candidates:
+            m = metadata.get(cid)
+            if not m:
+                continue
+            pairs.append((query, m["text"]))
+            cand_ids.append(cid)
+        if pairs:
+            ce = _get_reranker(reranker_model)
+            scores = ce.predict(pairs).tolist()
+            ranked = sorted(zip(cand_ids, scores), key=lambda x: x[1], reverse=True)[:final_top_k]
+            source_override = "reranked"
+        else:
+            ranked = candidates[:final_top_k]
+            source_override = None
+    else:
+        ranked = candidates[:final_top_k]
+        source_override = None
+
     hits: List[Hit] = []
     for cid, score in ranked:
         m = metadata.get(cid)
         if not m:
             continue
-        src = "hybrid" if cid in vn and cid in bn else ("vector" if cid in vn else "bm25")
+        if source_override:
+            src = source_override
+        else:
+            src = "hybrid" if cid in vn and cid in bn else ("vector" if cid in vn else "bm25")
         hits.append(Hit(
             chunk_id=cid,
             rel_path=m["rel_path"],
@@ -100,7 +149,7 @@ def hybrid_retrieve(query: str, *, faiss_dir: Path, bm25_dir: Path, meta_db: Pat
             start_line=m["start_line"],
             end_line=m["end_line"],
             text=m["text"],
-            score=score,
+            score=float(score),
             source=src,
         ))
     return hits

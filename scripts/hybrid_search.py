@@ -7,6 +7,13 @@ Usage:
 """
 from __future__ import annotations
 
+import os
+# Workaround for macOS OpenMP runtime conflict between faiss-cpu and pytorch.
+# Both link libomp; this allows the second runtime to load without aborting.
+# Safe for our usage pattern (sequential calls, no parallel OMP regions).
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
+
 import argparse
 import shutil
 import subprocess
@@ -59,6 +66,8 @@ def main() -> int:
         vector_top_k=rag_cfg["retrieval"]["vector_top_k"],
         bm25_top_k=rag_cfg["retrieval"]["bm25_top_k"],
         final_top_k=rag_cfg["retrieval"]["final_top_k"],
+        rerank=rag_cfg["retrieval"].get("rerank", False),
+        reranker_model=ep.reranker_model or "BAAI/bge-reranker-base",
     )
     for h in hits:
         print(f"--- {h.rel_path}:{h.start_line}-{h.end_line}  score={h.score:.3f}  via={h.source}")

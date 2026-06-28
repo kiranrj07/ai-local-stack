@@ -6,6 +6,13 @@ Usage:
 """
 from __future__ import annotations
 
+import os
+# Workaround for macOS OpenMP runtime conflict between faiss-cpu and pytorch.
+# Both link libomp; this allows the second runtime to load without aborting.
+# Safe for our usage pattern (sequential calls, no parallel OMP regions).
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
+
 import argparse
 import json
 import pickle

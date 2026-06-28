@@ -1,76 +1,58 @@
-# RAG pipeline configuration. Loaded by scripts/build_index.py and scripts/query_rag.py.
-# Endpoint selection (which Ollama, local vs hybrid) comes from config/system.yaml.
-
 source:
-  # Directory to index. Use absolute path or path relative to project root.
-  # Defaults to the ai-local-stack project itself so you can try the pipeline immediately.
-  # Change this to point at any repo/docs you want to query.
-  dir: "."
-  # Files smaller than min_bytes are skipped (avoids indexing empty files).
+  dir: .
   min_bytes: 16
-  # Files larger than max_bytes are truncated (avoids OOM on huge files).
   max_bytes: 2000000
-
 exclude_dirs:
-  - ".git"
-  - "node_modules"
-  - "venv"
-  - ".venv"
-  - "__pycache__"
-  - "dist"
-  - "build"
-  - ".cache"
-  - "indexes"
-  - "logs"
-  - ".mypy_cache"
-  - ".pytest_cache"
-  - ".ruff_cache"
-  - ".next"
-  - ".terraform"
-
+- .git
+- node_modules
+- venv
+- .venv
+- __pycache__
+- dist
+- build
+- .cache
+- indexes
+- logs
+- .mypy_cache
+- .pytest_cache
+- .ruff_cache
+- .next
+- .terraform
 include_extensions:
-  - ".py"
-  - ".js"
-  - ".ts"
-  - ".tsx"
-  - ".jsx"
-  - ".md"
-  - ".txt"
-  - ".yaml"
-  - ".yml"
-  - ".json"
-  - ".sh"
-  - ".tf"
-  - ".go"
-  - ".java"
-
+- .py
+- .js
+- .ts
+- .tsx
+- .jsx
+- .md
+- .txt
+- .yaml
+- .yml
+- .json
+- .sh
+- .tf
+- .go
+- .java
 chunking:
   chunk_size: 1000
   chunk_overlap: 200
-
 retrieval:
   vector_top_k: 8
   bm25_top_k: 8
   final_top_k: 5
-  # Set true once a reranker is installed (sentence-transformers + bge-reranker-base).
-  rerank: false
-  # Headroom: compress long retrieved context. Skipped when ctx is small/short.
+  rerank: true
   compression:
     enabled: false
     min_chars_to_compress: 6000
-
 storage:
-  faiss_dir: "indexes/faiss"
-  bm25_dir: "indexes/bm25"
-  metadata_db: "indexes/metadata.sqlite3"
-
+  faiss_dir: indexes/faiss
+  bm25_dir: indexes/bm25
+  metadata_db: indexes/metadata.sqlite3
 generation:
-  # Override system.yaml's llm_model here only if you want a different model for RAG.
   override_llm_model: null
   temperature: 0.2
   max_output_tokens: 1024
   cite_sources: true
-
 logging:
-  level: "INFO"
-  file: "logs/rag.log"
+  level: INFO
+  file: logs/rag.log

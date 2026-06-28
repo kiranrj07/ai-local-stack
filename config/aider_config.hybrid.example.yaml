@@ -1,13 +1,18 @@
 # Aider config — HYBRID profile. Routes inference to Ubuntu worker via SSH tunnel.
-# Start the tunnel first: bash scripts/start_remote_ollama_tunnel.sh
+# Start the tunnel first:  aitool tunnel
 
 model: ollama_chat/qwen2.5-coder:14b
 weak-model: ollama_chat/qwen2.5-coder:7b
-api-base: http://localhost:11435
-# Direct LAN alternative (less safe — see docs/12-dual-mode-mac-ubuntu.md):
-# api-base: http://REPLACE_ME_WORKER_LAN_IP:11434
 
+set-env:
+  - OLLAMA_API_BASE=http://localhost:11435
+
+# Privacy
 analytics: false
 gitignore: true
+
+# Safety: review before commits
 auto-commits: false
 dirty-commits: false
+
+show-model-warnings: false
