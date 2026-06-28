@@ -1,0 +1,14 @@
+# Ubuntu worker connection details. Sourced by remote-worker scripts.
+
+host_alias: "sshj"          # zsh alias defined in ~/.zshrc
+user: "REPLACE_ME_USER"
+ip: "REPLACE_ME_WORKER_LAN_IP"
+ssh_options:
+  - "ConnectTimeout=8"
+  - "BatchMode=yes"          # fail rather than prompt for password
+ports:
+  ollama: 11434
+ollama_install_dir: "/usr/local/bin"
+ollama_service: "ollama"     # systemd unit name
+# Where on the worker to keep ingestion artefacts pushed from Mac (if needed).
+remote_workdir: "/home/REPLACE_ME_USER/ai-local-stack-worker"

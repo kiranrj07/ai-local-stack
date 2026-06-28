@@ -1,0 +1,54 @@
+# ai-local-stack — master mode/topology config
+# Default mode is `auto`: probe the Ubuntu worker, auto-open SSH tunnel if available,
+# transparently fall back to Mac Ollama when worker is unreachable.
+# Override with: bash scripts/switch_mode.sh {auto|local|hybrid}
+
+mode: auto   # one of: auto | local | hybrid
+
+local:
+  ollama_url: "http://localhost:11434"
+  llm_model: "qwen2.5-coder:14b"
+  embedding_provider: "ollama"        # ollama | huggingface
+  embedding_model: "nomic-embed-text"
+  reranker_enabled: false              # set true after pulling bge-reranker-base
+  reranker_model: "BAAI/bge-reranker-base"
+  rag_runs_on: "mac"
+
+hybrid:
+  remote_host_alias: "sshj"            # zsh alias: ssh REPLACE_ME_USER@REPLACE_ME_WORKER_LAN_IP
+  remote_user: "REPLACE_ME_USER"
+  remote_ip: "REPLACE_ME_WORKER_LAN_IP"
+  # PREFERRED: SSH-tunneled Ollama (private). In auto mode the tunnel is opened
+  # automatically; you can also pre-open it with:
+  #   bash scripts/start_remote_ollama_tunnel.sh
+  ollama_url: "http://localhost:11435"
+  connection_type: "ssh_tunnel"        # ssh_tunnel | direct_lan
+  ssh_tunnel_local_port: 11435
+  ssh_tunnel_command: "ssh -N -L 11435:localhost:11434 REPLACE_ME_USER@REPLACE_ME_WORKER_LAN_IP"
+  # Direct LAN endpoint — only used if connection_type=direct_lan.
+  # WARNING: requires Ollama on Ubuntu to bind LAN IP; firewall to Mac only.
+  direct_lan_url: "http://REPLACE_ME_WORKER_LAN_IP:11434"
+  llm_model: "qwen2.5-coder:14b"
+  embedding_provider: "ollama"
+  embedding_model: "nomic-embed-text"
+  reranker_enabled: false
+  reranker_model: "BAAI/bge-reranker-base"
+  rag_runs_on: "mac"                   # orchestration/index on Mac
+  llm_runs_on: "ubuntu"
+  embeddings_run_on: "ubuntu"
+  reranker_runs_on: "mac"
+
+fallback:
+  enabled: true
+  if_remote_unreachable_use_local: true
+  ping_timeout_seconds: 4
+  http_timeout_seconds: 5
+
+security:
+  local_only_default: true
+  allow_cloud_apis: false             # if true, code may use external APIs — keep false
+  allow_remote_ollama: true           # required for hybrid/auto mode
+  remote_ollama_host: "REPLACE_ME_WORKER_LAN_IP"
+  restrict_mcp_to_project: true
+  # Project root that MCP filesystem is allowed to read/write. Absolute path.
+  mcp_project_root: "/Users/USER/ai-local-stack"

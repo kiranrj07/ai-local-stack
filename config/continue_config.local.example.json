@@ -1,0 +1,30 @@
+{
+  "_comment": "VS Code Continue extension — LOCAL profile. Copy to ~/.continue/config.json (back up your existing one first). All requests stay on the Mac.",
+  "models": [
+    {
+      "title": "Qwen2.5 Coder 14B (local)",
+      "provider": "ollama",
+      "model": "qwen2.5-coder:14b",
+      "apiBase": "http://localhost:11434"
+    },
+    {
+      "title": "Qwen2.5 Coder 7B (local, lightweight)",
+      "provider": "ollama",
+      "model": "qwen2.5-coder:7b",
+      "apiBase": "http://localhost:11434"
+    }
+  ],
+  "tabAutocompleteModel": {
+    "title": "Qwen2.5 Coder Autocomplete",
+    "provider": "ollama",
+    "model": "qwen2.5-coder:7b",
+    "apiBase": "http://localhost:11434"
+  },
+  "embeddingsProvider": {
+    "provider": "ollama",
+    "model": "nomic-embed-text",
+    "apiBase": "http://localhost:11434"
+  },
+  "allowAnonymousTelemetry": false,
+  "disableIndexing": false
+}

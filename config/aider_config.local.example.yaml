@@ -1,0 +1,16 @@
+# Aider config — LOCAL profile. Save as ~/.aider.conf.yml or pass via --config.
+# Aider reads OpenAI-compatible APIs; Ollama exposes one at /v1.
+
+model: ollama_chat/qwen2.5-coder:14b
+weak-model: ollama_chat/qwen2.5-coder:7b
+api-base: http://localhost:11434
+# IMPORTANT: do NOT set OPENAI_API_KEY in your shell unless you also intend to use OpenAI.
+# Aider will pick it up automatically and route there if model name is OpenAI-shaped.
+
+# Privacy
+analytics: false
+gitignore: true
+
+# Safety: require approval before applying edits
+auto-commits: false
+dirty-commits: false

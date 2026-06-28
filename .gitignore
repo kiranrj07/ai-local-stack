@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Indexes (machine-specific; rebuild with `aitool index --rebuild`)
+indexes/faiss/*.faiss
+indexes/faiss/*.json
+indexes/bm25/*.pkl
+indexes/metadata.sqlite3
+
+# Data
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Logs
+logs/*
+!logs/.gitkeep
+
+# OS / editor
+.DS_Store
+*.swp
+.vscode/
+
+# Local-only configs that may contain hostnames/IPs you don't want public
+# (system.yaml and remote_worker.yaml CONTAIN your worker IP — see below)
+
+# Lab-specific configs with real hostnames/IPs (use *.example for sharing)
+config/system.yaml
+config/remote_worker.yaml

@@ -1,0 +1,34 @@
+# ai-local-stack Python dependencies
+# Pinned to versions known compatible with Python 3.10-3.12 on arm64 macOS.
+
+# --- Core
+pyyaml>=6.0,<7
+pydantic>=2.6,<3
+requests>=2.31,<3
+rich>=13.7,<14
+typer>=0.12,<1                  # CLI utilities (used by future cli wrappers)
+
+# --- RAG / retrieval
+llama-index>=0.10,<0.12         # main RAG framework
+llama-index-vector-stores-faiss>=0.2,<0.4
+llama-index-embeddings-huggingface>=0.2,<0.4
+langchain>=0.2,<0.4             # used selectively
+langchain-community>=0.2,<0.4
+langchain-ollama>=0.1,<0.4
+
+# Vector / keyword
+faiss-cpu>=1.7,<2               # CPU FAISS; arm64 mac wheel exists
+rank-bm25>=0.2.2,<0.3
+sentence-transformers>=2.7,<4   # embeddings + reranker via HF
+
+# --- Observability (optional but installed)
+arize-phoenix>=4.0,<6
+
+# --- Evaluation (optional)
+# ragas>=0.1,<0.3               # uncomment if you want Ragas (pulls heavy deps)
+# deepeval>=0.21,<2              # uncomment if you want DeepEval
+
+# --- Ingestion (optional)
+# crawl4ai>=0.3,<0.4             # uncomment if you need web/PDF crawling
+# docling>=2.0,<3                # uncomment for high-quality PDF/Office parsing
+# unstructured>=0.13,<0.16       # alternative unified parser

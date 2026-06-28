@@ -1,0 +1,233 @@
+#!/usr/bin/env bash
+# aitool — single CLI entry point for the ai-local-stack project.
+# Works from any directory. Project root resolved via AI_LOCAL_STACK_ROOT (default: ~/ai-local-stack).
+set -euo pipefail
+
+ROOT="${AI_LOCAL_STACK_ROOT:-$HOME/ai-local-stack}"
+SCRIPT_NAME="$(basename "$0")"
+
+if [ ! -d "$ROOT" ]; then
+  echo "ERROR: project root not found at $ROOT" >&2
+  echo "Set AI_LOCAL_STACK_ROOT or move the project to ~/ai-local-stack" >&2
+  exit 2
+fi
+
+activate_venv_if_present() {
+  if [ -d "$ROOT/.venv" ]; then
+    # shellcheck disable=SC1091
+    source "$ROOT/.venv/bin/activate"
+  else
+    echo "WARN: $ROOT/.venv not present. Run: $SCRIPT_NAME install" >&2
+  fi
+}
+
+usage() {
+  cat <<HELP
+${SCRIPT_NAME} — local AI stack CLI
+
+USAGE:
+  ${SCRIPT_NAME} <command> [args...]
+  ${SCRIPT_NAME} --help
+
+MODE / ENDPOINT:
+  status                       Print current mode and resolved Ollama endpoint
+  mode <auto|local|hybrid>     Switch operating mode (default: auto)
+  tunnel                       Open SSH tunnel Mac:11435 -> Ubuntu:11434 (idempotent)
+  tunnel-stop                  Close the SSH tunnel
+
+CHECKS:
+  check                        Probe Mac prerequisites (read-only)
+  check-remote                 Probe Ubuntu worker over SSH (read-only)
+  health                       End-to-end health check
+
+SETUP:
+  install                      Create .venv and install Python deps
+  pull-local                   Pull baseline Ollama models on Mac
+  pull-remote                  Pull baseline Ollama models on Ubuntu worker
+
+RAG:
+  index [--rebuild] [--source DIR]
+                               Build or rebuild FAISS+BM25+SQLite index
+  query <question...>          Hybrid retrieval + LLM answer with citations
+  search <query...>            Show retrieved chunks only (no LLM call)
+  search --rg <query...>       Exact ripgrep search
+  ingest --input <dir> --output <dir>
+                               Convert PDFs/HTML/DOCX in --input to Markdown in --output
+
+REPO WORKFLOWS:
+  clone <git-url> [name]       Clone a repo into ~/code/<name>/ then index it
+  open [path]                  Open VS Code on a directory (default: project root)
+                               Starts the tunnel automatically so Continue/Cline can use the worker.
+
+OBSERVABILITY:
+  phoenix                      Start Phoenix UI on http://localhost:6006
+
+UTILITY:
+  shell                        Drop into venv-activated shell at project root
+  version                      Print version + resolved root
+  help, -h, --help             Show this help
+
+EXAMPLES:
+  ${SCRIPT_NAME} status
+  ${SCRIPT_NAME} mode auto
+  ${SCRIPT_NAME} tunnel
+  ${SCRIPT_NAME} index --rebuild
+  ${SCRIPT_NAME} query "Where is authentication handled?"
+  ${SCRIPT_NAME} clone https://github.com/owner/repo
+  ${SCRIPT_NAME} open ~/code/repo
+  ${SCRIPT_NAME} health
+
+ENVIRONMENT:
+  AI_LOCAL_STACK_ROOT  Override project root (default: \$HOME/ai-local-stack)
+
+CURRENT:
+  project root         ${ROOT}
+HELP
+}
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+  -h|--help|help)
+    usage
+    ;;
+
+  version)
+    echo "${SCRIPT_NAME} 0.2 (root=${ROOT})"
+    ;;
+
+  status)
+    bash "$ROOT/scripts/switch_mode.sh" status
+    ;;
+
+  mode)
+    new="${1:-}"
+    case "$new" in
+      auto|local|hybrid) bash "$ROOT/scripts/switch_mode.sh" "$new" ;;
+      "")  echo "usage: ${SCRIPT_NAME} mode <auto|local|hybrid>" >&2; exit 2 ;;
+      *)   echo "invalid mode: $new (expected auto|local|hybrid)" >&2; exit 2 ;;
+    esac
+    ;;
+
+  tunnel)
+    bash "$ROOT/scripts/start_remote_ollama_tunnel.sh"
+    ;;
+
+  tunnel-stop)
+    PIDS=$(lsof -nP -iTCP:11435 -sTCP:LISTEN 2>/dev/null | awk 'NR>1 && $1 ~ /ssh/ {print $2}' | sort -u | tr '\n' ' ')
+    if [ -z "$PIDS" ]; then
+      echo "no tunnel running on :11435"
+    else
+      # shellcheck disable=SC2086
+      kill $PIDS && echo "killed tunnel pid(s): $PIDS"
+    fi
+    ;;
+
+  check)
+    cd "$ROOT" && bash scripts/check_system.sh
+    ;;
+
+  check-remote)
+    bash "$ROOT/scripts/check_remote_worker.sh"
+    ;;
+
+  health)
+    bash "$ROOT/scripts/health_check.sh"
+    ;;
+
+  install)
+    bash "$ROOT/scripts/install_dependencies.sh"
+    ;;
+
+  pull-local)
+    bash "$ROOT/scripts/pull_models_local.sh"
+    ;;
+
+  pull-remote)
+    bash "$ROOT/scripts/pull_models_remote.sh"
+    ;;
+
+  index)
+    activate_venv_if_present
+    cd "$ROOT" && python scripts/build_index.py "$@"
+    ;;
+
+  query)
+    if [ "$#" -eq 0 ]; then
+      echo "usage: ${SCRIPT_NAME} query <question...>" >&2; exit 2
+    fi
+    activate_venv_if_present
+    cd "$ROOT" && python scripts/query_rag.py "$@"
+    ;;
+
+  search)
+    if [ "$#" -eq 0 ]; then
+      echo "usage: ${SCRIPT_NAME} search [--rg] <query...>" >&2; exit 2
+    fi
+    activate_venv_if_present
+    cd "$ROOT" && python scripts/hybrid_search.py "$@"
+    ;;
+
+  ingest)
+    activate_venv_if_present
+    cd "$ROOT" && python scripts/ingest_docs.py "$@"
+    ;;
+
+  phoenix)
+    bash "$ROOT/scripts/start_phoenix.sh"
+    ;;
+
+  shell)
+    activate_venv_if_present
+    cd "$ROOT"
+    exec "${SHELL:-/bin/zsh}"
+    ;;
+
+  clone)
+    url="${1:-}"
+    if [ -z "$url" ]; then
+      echo "usage: ${SCRIPT_NAME} clone <git-url> [name]" >&2; exit 2
+    fi
+    name="${2:-$(basename "$url" .git)}"
+    mkdir -p "$HOME/code"
+    target="$HOME/code/$name"
+    if [ -e "$target" ]; then
+      echo "target already exists: $target" >&2
+      echo "remove or rename it first, then re-run." >&2
+      exit 2
+    fi
+    echo "cloning $url -> $target"
+    git clone "$url" "$target"
+    echo
+    echo "indexing the cloned repo..."
+    activate_venv_if_present
+    cd "$ROOT" && python scripts/build_index.py --source "$target" --rebuild
+    echo
+    echo "Done. Next:"
+    echo "  ${SCRIPT_NAME} open $target"
+    echo "  ${SCRIPT_NAME} query \"summarize this repo\""
+    ;;
+
+  open)
+    target="${1:-$ROOT}"
+    if [ ! -d "$target" ]; then
+      echo "directory not found: $target" >&2; exit 2
+    fi
+    if ! command -v code >/dev/null 2>&1; then
+      echo "VS Code 'code' CLI not on PATH." >&2
+      echo "Fix: open VS Code, Cmd+Shift+P, run 'Shell Command: Install code command in PATH'." >&2
+      exit 2
+    fi
+    # Best-effort: open tunnel so Continue/Cline can use worker if auto resolves to hybrid.
+    bash "$ROOT/scripts/start_remote_ollama_tunnel.sh" >/dev/null 2>&1 || true
+    echo "opening VS Code on $target"
+    code "$target"
+    ;;
+
+  *)
+    echo "unknown command: $cmd" >&2
+    echo "run: ${SCRIPT_NAME} --help" >&2
+    exit 2
+    ;;
+esac

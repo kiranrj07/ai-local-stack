@@ -1,0 +1,40 @@
+{
+  "_comment": "Example MCP config. Copy to your MCP host (e.g. Cline settings or .mcp.json) and ADJUST PATHS. Filesystem is restricted to the project root only.",
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/Users/krajp/ai-local-stack"
+      ],
+      "_note": "Restricted to project root. DO NOT add $HOME or '/' here."
+    },
+    "git": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-git",
+        "--repository",
+        "/Users/krajp/ai-local-stack"
+      ],
+      "_note": "Local repo only. Destructive commands (reset, force push) should be reviewed."
+    },
+    "_disabled_docker": {
+      "_warning": "OPTIONAL. Enable only if you need MCP to drive Docker. Can interact with any container.",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-docker"]
+    },
+    "_disabled_github": {
+      "_warning": "NETWORK REQUIRED. Sends repo data to api.github.com. Disabled by default.",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "set-only-if-you-need-this" }
+    },
+    "_disabled_web_browser": {
+      "_warning": "NETWORK REQUIRED. Browses external URLs. Disabled by default.",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-puppeteer"]
+    }
+  }
+}
